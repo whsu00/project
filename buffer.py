@@ -7,8 +7,14 @@ import scipy.signal
 from utils.logx import EpochLogger
 from utils.mpi_torch import average_gradients, sync_all_params
 from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
+import pdb
 
 class Buffer(object):
+
+    '''
+    eps: pointer per episode
+    ptr: pointer per timestep
+    '''
     def __init__(self, con_dim, obs_dim, act_dim, batch_size, ep_len, dc_interv, gamma=0.99, lam=0.95, N=11):
         self.max_batch = batch_size
         self.dc_interv = dc_interv
@@ -26,6 +32,7 @@ class Buffer(object):
         self.ptr = 0
         self.eps = 0
         self.dc_eps = 0
+        self.obs_dim = obs_dim
 
         self.N = 11
 
@@ -39,7 +46,7 @@ class Buffer(object):
         assert self.ptr < self.max_s
         self.obs[self.ptr] = obs
         self.act[self.ptr] = act
-        self.con[self.eps] = con
+        self.con[self.dc_eps] = con
         self.rew[self.ptr] = rew
         self.val[self.ptr] = val
         self.lgt[self.ptr] = lgt
@@ -48,14 +55,16 @@ class Buffer(object):
     def calc_diff(self):
         # Store differences into a specific memory
         # TODO: convert this into vector operation
+        #pdb.set_trace()
         start = int(self.end[self.eps])
         ep_l = self.ptr - start - 1
         for i in range(self.N-1):
             prev = int(i*ep_l/(self.N-1))
             succ = int((i+1)*ep_l/(self.N-1))
-            self.dcbuf[self.eps, i] = self.obs[start + succ][:self.obs_dim] - self.obs[start + prev][:self.obs_dim]
+            #Store differences between successive observations
+            self.dcbuf[self.dc_eps, i] = self.obs[start + succ][:self.obs_dim] - self.obs[start + prev][:self.obs_dim]
 
-        return self.dcbuf[self.eps]
+        return self.dcbuf[self.dc_eps]
 
     def end_episode(self, pret_pos, last_val=0): # pret_pos gives the log possibility of cheating the discriminator
         ep_slice = slice(int(self.end[self.eps]), self.ptr)
@@ -84,7 +93,16 @@ class Buffer(object):
         return [self.obs[occup_slice], self.act[occup_slice], self.adv[occup_slice], self.pos[occup_slice],
             self.ret[occup_slice], self.lgt[occup_slice]]
 
+    def clear_main_buffer(self):
+        self.ptr = 0
+        self.eps = 0
+
+    def clear_dc_buff(self):
+        self.dc_eps = 0
+        self.con = np.zeros(self.max_batch * self.dc_interv)
+        self.dcbuf = np.zeros((self.max_batch * self.dc_interv, self.N-1, self.obs_dim))
+
     def retrieve_dc_buff(self):
         assert self.dc_eps == self.max_batch * self.dc_interv
-        self.dc_eps = 0
+        #self.dc_eps = 0
         return [self.con, self.dcbuf]

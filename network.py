@@ -6,7 +6,9 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 from gym.spaces import Box, Discrete
+import pdb
 
+#Creates MLP 
 class MLP(nn.Module):
     def __init__(self, layers, activation=torch.tanh, output_activation=None,
                  output_squeeze=False):
@@ -39,6 +41,7 @@ class GaussianPolicy(nn.Module):
 
     def forward(self, x, a=None):
         policy = Normal(self.mu(x), self.log_std.exp())
+        #pdb.set_trace()
         pi = policy.sample()
         logp_pi = policy.log_prob(pi).sum(dim=1)
         if a is not None:
@@ -87,6 +90,13 @@ class BLSTMPolicy(nn.Module):
 
         return label, loggt, logp
 
+'''
+class TransformerPolicy(nn.module):
+    def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim):
+        super(TransformerPolicy, self).__init__()
+        self.transformer = 
+'''
+
 class ActorCritic(nn.Module):
     def __init__(self, input_dim, action_space, hidden_dims=(64, 64), activation=torch.tanh, output_activation=None, policy=None):
         super(ActorCritic, self).__init__()
@@ -102,6 +112,7 @@ class ActorCritic(nn.Module):
         self.value_f = MLP(layers=[input_dim] + list(hidden_dims) + [1], activation=activation, output_squeeze=True)
 
     def forward(self, x, a=None):
+        #pdb.set_trace()
         pi, logp, logp_pi = self.policy(x, a)
         v= self.value_f(x)
 
