@@ -114,7 +114,7 @@ class ActorCritic(nn.Module):
     def forward(self, x, a=None):
         #pdb.set_trace()
         pi, logp, logp_pi = self.policy(x, a)
-        v= self.value_f(x)
+        v = self.value_f(x)
 
         return pi, logp, logp_pi, v
 
@@ -129,10 +129,16 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         self.policy = BLSTMPolicy(input_dim, hidden_dims, activation, output_activation, context_dim)
+        self.hidden_dims = hidden_dims
 
     def forward(self, seq, gt=None):
         pred, loggt, logp = self.policy(seq, gt)
         return pred, loggt, logp
+
+    def update_output_dim(self, new_dim):
+        self.policy.linear = nn.Linear(self.hidden_dims, new_dim)
+        nn.init.zeros_(self.policy.linear.bias)
+
 
 def count_vars(module):
     return sum(p.numel() for p in module.parameters() if p.requires_grad)

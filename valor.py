@@ -14,7 +14,7 @@ from utils.logx import EpochLogger
 import pdb
 
 def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=0, episodes_per_epoch=40,
-        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=5e-4, train_v_iters=80, train_dc_iters=10, train_dc_interv=10, 
+        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=2e-3, train_v_iters=80, train_dc_iters=50, train_dc_interv=2, 
         lam=0.97, max_ep_len=1000, logger_kwargs=dict(), con_dim=4, max_context_dim = 64, save_freq=10, k=1):
 
     '''
@@ -47,12 +47,12 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     ac_kwargs['action_space'] = env.action_space
 
     # Model
-    actor_critic = actor_critic(input_dim=obs_dim[0]+con_dim, **ac_kwargs)
-    disc = disc(input_dim=obs_dim[0], context_dim=con_dim, **dc_kwargs)
+    actor_critic = actor_critic(input_dim=obs_dim[0]+max_context_dim, **ac_kwargs)
+    disc = disc(input_dim=obs_dim[0], context_dim=max_context_dim, **dc_kwargs)
 
     # Buffer
     local_episodes_per_epoch = int(episodes_per_epoch / num_procs())
-    buffer = Buffer(con_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
+    buffer = Buffer(max_context_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
 
     # Count variables
     var_counts = tuple(count_vars(module) for module in
@@ -108,7 +108,6 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         # Discriminator
         if (e+1) % train_dc_interv == 0:
             print('Discriminator Update!')
-            #pdb.set_trace()
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
             _, logp_dc, _ = disc(s_diff, con)
             d_l_old = -logp_dc.mean()
@@ -142,7 +141,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     #Creates context distribution where each logit is equal to one (This is first place to make change)
-    init_context_prob_arr = con_dim * [1/con_dim]
+    init_context_prob_arr = con_dim * [1/con_dim] + (max_context_dim - con_dim)*[0]
     context_dist = Categorical(probs=torch.Tensor(init_context_prob_arr))
     total_t = 0
 
@@ -160,7 +159,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
                 pdb.set_trace()
     
             c = context_dist.sample()
-            c_onehot = F.one_hot(c, con_dim).squeeze().float()
+
+            c_onehot = F.one_hot(c, max_context_dim).squeeze().float()
             for _ in range(max_ep_len):
                 concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
                 '''
@@ -213,7 +213,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         if (epoch + 1 )% train_dc_interv == 0 and epoch > 0:
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
             print("Context: ",  con)
-            print("State Diffs", s_diff)
+            # print("State Diffs", s_diff)
             print("num_contexts", len(con))
             _, logp_dc, _ = disc(s_diff, con)
             log_p_context_sample = logp_dc.mean().detach().numpy()
@@ -223,12 +223,12 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             decoder_accuracy = np.exp(log_p_context_sample)
             print("Decoder Accuracy", decoder_accuracy)
 
-            if decoder_accuracy >= 0.86:
-                new_context_dim = min(int(1.5*context_dim + 1), max_context_dim)
+            if decoder_accuracy >= 0.5:
+                new_context_dim = min(int(1.5*con_dim+1), max_context_dim)
                 print("new_context_dim: ", new_context_dim)
-                new_context_prob_arr = new_context_dim * [1/new_context_dim]
-                context_dist = Categorical(probs= new_context_prob_arr )
-                context_dim = new_context_dim
+                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
+                context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
+                con_dim = new_context_dim
 
             buffer.clear_dc_buff()
 
