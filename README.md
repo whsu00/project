@@ -2,9 +2,9 @@
 This is a pytorch implementation of VALOR.
 
 ## Colab Usage
-Click to open in Google Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/whsu00/project/blob/master/notebook.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/whsu00/project/blob/master/notebook.ipynb)
 
-To save to this repository, click `File` -> `Save a copy in GitHub`, and select this repository.
+To save to this repository from Colab, click `File` -> `Save a copy in GitHub`, and select this repository.
 
 ## Motivation of this project
 Variational methods are recently introduced into reinforcement learning research. It allows RL algorithms learn various modes of policies besides maximize accumulated return. Mutual information measures the degree of relation between pre-sampled policy label and the following states or trajectories. By maximizing MI, we can assign $\pi$ different task labels, leading to different behavior.
