@@ -3,6 +3,7 @@ This is a pytorch implementation of VALOR.
 
 ## Colab Usage
 Click to open in Google Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/whsu00/project/blob/master/notebook.ipynb)
+
 To save to this repository, click `File` -> `Save a copy in GitHub`, and select this repository.
 
 ## Motivation of this project
