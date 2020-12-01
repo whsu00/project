@@ -8,8 +8,8 @@ import scipy.signal
 from network import Discriminator, ActorCritic, count_vars
 from buffer import Buffer
 from torch.distributions.categorical import Categorical
-from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
-from utils.mpi_torch import average_gradients, sync_all_params
+# from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
+# from utils.mpi_torch import average_gradients, sync_all_params
 from utils.logx import EpochLogger
 import pdb
 
@@ -36,7 +36,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
 
-    seed += 10000 * proc_id()
+    # seed += 10000 * proc_id()
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -51,7 +51,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     disc = disc(input_dim=obs_dim[0], context_dim=con_dim, **dc_kwargs)
 
     # Buffer
-    local_episodes_per_epoch = int(episodes_per_epoch / num_procs())
+    local_episodes_per_epoch = episodes_per_epoch # int(episodes_per_epoch / num_procs())
     buffer = Buffer(con_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
 
     # Count variables
@@ -70,8 +70,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     train_dc = torch.optim.Adam(disc.policy.parameters(), lr=dc_lr)
 
     # Parameters Sync
-    sync_all_params(actor_critic.parameters())
-    sync_all_params(disc.parameters())
+    # sync_all_params(actor_critic.parameters())
+    # sync_all_params(disc.parameters())
 
     '''
     Training function
@@ -89,7 +89,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         # Train policy (Go through policy update)
         train_pi.zero_grad()
         pi_loss.backward()
-        average_gradients(train_pi.param_groups)
+        # average_gradients(train_pi.param_groups)
         train_pi.step()
 
         # Value function
@@ -102,7 +102,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             # Value function train
             train_v.zero_grad()
             v_loss.backward()
-            average_gradients(train_v.param_groups)
+            # average_gradients(train_v.param_groups)
             train_v.step()
 
         # Discriminator
@@ -119,7 +119,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
                 d_loss = -logp_dc.mean()
                 train_dc.zero_grad()
                 d_loss.backward()
-                average_gradients(train_dc.param_groups)
+                # average_gradients(train_dc.param_groups)
                 train_dc.step()
 
             _, logp_dc, _ = disc(s_diff, con)
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     parser.add_argument('--con', type=int, default=5)
     args = parser.parse_args()
 
-    mpi_fork(args.cpu)
+    # mpi_fork(args.cpu)
 
     from utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
