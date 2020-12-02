@@ -13,9 +13,13 @@ from utils.mpi_torch import average_gradients, sync_all_params
 from utils.logx import EpochLogger
 import pdb
 
-def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=0, episodes_per_epoch=40,
-        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=5e-4, train_v_iters=80, train_dc_iters=10, train_dc_interv=10, 
-        lam=0.97, max_ep_len=1000, logger_kwargs=dict(), con_dim=4, max_context_dim = 64, save_freq=10, k=1):
+def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=1, episodes_per_epoch=40,
+        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=1e-3, train_v_iters=80, train_dc_iters=50, train_dc_interv=2, 
+        lam=0.97, max_ep_len=40, logger_kwargs=dict(), con_dim=4, max_context_dim = 64, save_freq=10, k=1):
+
+    '''
+    They had 1000 episodes per epoch
+    '''
 
     '''
     Notes: Discriminator is the decoder
@@ -69,6 +73,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     #Optimizer for decoder
     train_dc = torch.optim.Adam(disc.policy.parameters(), lr=dc_lr)
 
+    #pdb.set_trace()
+
     # Parameters Sync
     sync_all_params(actor_critic.parameters())
     sync_all_params(disc.parameters())
@@ -108,7 +114,6 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         # Discriminator
         if (e+1) % train_dc_interv == 0:
             print('Discriminator Update!')
-            #pdb.set_trace()
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
             _, logp_dc, _ = disc(s_diff, con)
             d_l_old = -logp_dc.mean()
@@ -155,11 +160,12 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         for index in range(local_episodes_per_epoch):
             # Sample from context distribution and one-hot encode it (Step 2)
             # Every time we run the policy we sample a new context
-
-            if epoch == 52:
-                pdb.set_trace()
     
             c = context_dist.sample()
+            '''
+            TODO:
+            Need to change onehot encoded representation of each context (cuz number of options will change)
+            '''
             c_onehot = F.one_hot(c, con_dim).squeeze().float()
             for _ in range(max_ep_len):
                 concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
@@ -213,7 +219,6 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         if (epoch + 1 )% train_dc_interv == 0 and epoch > 0:
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
             print("Context: ",  con)
-            print("State Diffs", s_diff)
             print("num_contexts", len(con))
             _, logp_dc, _ = disc(s_diff, con)
             log_p_context_sample = logp_dc.mean().detach().numpy()
@@ -224,14 +229,13 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             print("Decoder Accuracy", decoder_accuracy)
 
             if decoder_accuracy >= 0.86:
-                new_context_dim = min(int(1.5*context_dim + 1), max_context_dim)
+                new_context_dim = min(int(1.5*con_dim + 1), max_context_dim)
                 print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim]
                 context_dist = Categorical(probs= new_context_prob_arr )
                 context_dim = new_context_dim
 
             buffer.clear_dc_buff()
-
 
         # Log
         logger.log_tabular('Epoch', epoch)
@@ -257,12 +261,12 @@ if __name__ == '__main__':
     parser.add_argument('--hid', type=int, default=64)
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--seed', '-s', type=int, default=0)
+    parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=8)
-    parser.add_argument('--episodes', type=int, default=40)
+    parser.add_argument('--episodes', type=int, default=1000)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--exp_name', type=str, default='valor')
-    parser.add_argument('--con', type=int, default=5)
+    parser.add_argument('--con', type=int, default=4)
     args = parser.parse_args()
 
     mpi_fork(args.cpu)
@@ -271,6 +275,5 @@ if __name__ == '__main__':
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     valor(lambda: gym.make(args.env), actor_critic=ActorCritic, ac_kwargs=dict(hidden_dims=[args.hid]*args.l),
-        disc=Discriminator, dc_kwargs=dict(hidden_dims=args.hid),
-        gamma=args.gamma, seed=args.seed, episodes_per_epoch=args.episodes, epochs=args.epochs, logger_kwargs=logger_kwargs, con_dim=args.con)
+        disc=Discriminator, dc_kwargs=dict(hidden_dims=args.hid),  gamma=args.gamma, seed=args.seed, episodes_per_epoch=args.episodes, epochs=args.epochs, logger_kwargs=logger_kwargs, con_dim=args.con)
 

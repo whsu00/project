@@ -69,8 +69,18 @@ class CategoricalPolicy(nn.Module):
 
         return pi, logp, logp_pi
 
+class BLSTMEncoderPolicy(nn.Module):
+    def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim, bidirectional):
+        super(BLSTMPolicy, self).__init__()
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims, batch_first=True, bidirectional=False)
+        lstm_output_size = hidden_dims
+        self.logits = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation)
+
+
+
+
 class BLSTMPolicy(nn.Module):
-    def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim):
+    def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim, bidirectional):
         super(BLSTMPolicy, self).__init__()
         self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims//2, batch_first=True, bidirectional=True)
         self.linear = nn.Linear(hidden_dims, con_dim)
@@ -113,6 +123,9 @@ class ActorCritic(nn.Module):
 
     def forward(self, x, a=None):
         #pdb.set_trace()
+        '''
+        pi is 
+        '''
         pi, logp, logp_pi = self.policy(x, a)
         v= self.value_f(x)
 
@@ -128,7 +141,7 @@ class Discriminator(nn.Module):
     def __init__(self, input_dim, context_dim, activation=torch.softmax, output_activation=torch.softmax, hidden_dims=64):
         super(Discriminator, self).__init__()
 
-        self.policy = BLSTMPolicy(input_dim, hidden_dims, activation, output_activation, context_dim)
+        self.policy = BLSTMPolicy(input_dim, hidden_dims, activation, output_activation, context_dim, bidirectional = True)
 
     def forward(self, seq, gt=None):
         pred, loggt, logp = self.policy(seq, gt)
