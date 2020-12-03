@@ -4,6 +4,7 @@ import os
 import os.path as osp
 import torch
 from fireup import EpochLogger
+import pytorch_utils as ptu
 
 
 def load_policy(fpath, itr='last'):
@@ -47,8 +48,8 @@ def run_policy(env, get_action, max_ep_len=None, num_episodes=100, render=True):
             env.render()
             time.sleep(1e-3)
 
-        a = get_action(torch.Tensor(o.reshape(1,-1)))[0]
-        o, r, d, _ = env.step(a.detach().numpy()[0])
+        a = get_action(ptu.from_numpy(o.reshape(1,-1)))[0]
+        o, r, d, _ = env.step(ptu.to_numpy(a)[0])
         ep_ret += r
         ep_len += 1
 
