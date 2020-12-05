@@ -13,34 +13,14 @@ from utils.mpi_torch import average_gradients, sync_all_params
 from utils.logx import EpochLogger
 import pdb
 
-def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=1, episodes_per_epoch=40,
-        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=1e-3, train_v_iters=80, train_dc_iters=50, train_dc_interv=2, 
-        lam=0.97, max_ep_len=40, logger_kwargs=dict(), con_dim=4, max_context_dim = 64, save_freq=10, k=1):
-
-    '''
-    They had 1000 episodes per epoch
-    '''
-
-    '''
-    Notes: Discriminator is the decoder
-    TODO: 1) Go through policy update
-        2) Write out flow to yourself
-        3) Implement Curriculum Learning
-        4) Scrutinize possible mistakes (why is logp instead of log_gt stored in a lot of places)
-            a) Why isn't LSTM Policy used in encoder?
-            b) Why is policy loss the way it is?
-            c) Why is expectation taken the way that it is in decoder?
-
-    '''
-    '''
-    Major Bug:
-    Buffer gets overriden every 5 timesteps -> because indeces get reset everytime you pull from the buffer
-    '''
+def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=0, episodes_per_epoch=40,
+        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=2e-3, train_v_iters=80, train_dc_iters=50, train_dc_interv=2, 
+        lam=0.97, max_ep_len=40, logger_kwargs=dict(), con_dim=4, max_con_dim = 64, save_freq=10, k=1):
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
 
-    seed += 10000 * proc_id()
+    # seed += 10000 * proc_id()
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -51,12 +31,12 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     ac_kwargs['action_space'] = env.action_space
 
     # Model
-    actor_critic = actor_critic(input_dim=obs_dim[0]+con_dim, **ac_kwargs)
-    disc = disc(input_dim=obs_dim[0], context_dim=con_dim, **dc_kwargs)
+    actor_critic = actor_critic(input_dim=obs_dim[0]+max_con_dim, **ac_kwargs)
+    disc = disc(input_dim=obs_dim[0], context_dim=max_con_dim, **dc_kwargs)
 
     # Buffer
     local_episodes_per_epoch = int(episodes_per_epoch / num_procs())
-    buffer = Buffer(con_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
+    buffer = Buffer(max_con_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
 
     # Count variables
     var_counts = tuple(count_vars(module) for module in
@@ -76,8 +56,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     #pdb.set_trace()
 
     # Parameters Sync
-    sync_all_params(actor_critic.parameters())
-    sync_all_params(disc.parameters())
+    #sync_all_params(actor_critic.parameters())
+    #sync_all_params(disc.parameters())
 
     '''
     Training function
@@ -86,7 +66,9 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         obs, act, adv, pos, ret, logp_old = [torch.Tensor(x) for x in buffer.retrieve_all()]
         
         # Policy
-        _, logp, _ = actor_critic.policy(obs, act)
+        #pdb.set_trace()
+        _, logp, _ = actor_critic.policy(obs, act, batch = False)
+        #pdb.set_trace()
         entropy = (-logp).mean()
 
         # Policy loss
@@ -95,7 +77,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         # Train policy (Go through policy update)
         train_pi.zero_grad()
         pi_loss.backward()
-        average_gradients(train_pi.param_groups)
+        # average_gradients(train_pi.param_groups)
         train_pi.step()
 
         # Value function
@@ -108,7 +90,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             # Value function train
             train_v.zero_grad()
             v_loss.backward()
-            average_gradients(train_v.param_groups)
+            # average_gradients(train_v.param_groups)
             train_v.step()
 
         # Discriminator
@@ -124,7 +106,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
                 d_loss = -logp_dc.mean()
                 train_dc.zero_grad()
                 d_loss.backward()
-                average_gradients(train_dc.param_groups)
+                # average_gradients(train_dc.param_groups)
                 train_dc.step()
 
             _, logp_dc, _ = disc(s_diff, con)
@@ -147,8 +129,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     #Creates context distribution where each logit is equal to one (This is first place to make change)
-    init_context_prob_arr = con_dim * [1/con_dim]
-    context_dist = Categorical(probs=torch.Tensor(init_context_prob_arr))
+    context_dim_prob_dict = {i: 1/con_dim if i < con_dim else 0 for i in range(max_con_dim)} 
+    context_dist = Categorical(probs=torch.Tensor(list(context_dim_prob_dict.values())))
     total_t = 0
 
     for epoch in range(epochs):
@@ -162,11 +144,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             # Every time we run the policy we sample a new context
     
             c = context_dist.sample()
-            '''
-            TODO:
-            Need to change onehot encoded representation of each context (cuz number of options will change)
-            '''
-            c_onehot = F.one_hot(c, con_dim).squeeze().float()
+            c_onehot = F.one_hot(c, max_con_dim).squeeze().float()
             for _ in range(max_ep_len):
                 concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
                 '''
@@ -215,8 +193,9 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             Loop through each of d episodes taken in local_episodes_per_epoch and check log probability from discrimantor
             If >= 0.86, increase k in the following manner: k = min(int(1.5*k + 1), Kmax)
             Kmax = 64
-        '''
+        ''' 
         if (epoch + 1 )% train_dc_interv == 0 and epoch > 0:
+            #pdb.set_trace()
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
             print("Context: ",  con)
             print("num_contexts", len(con))
@@ -228,12 +207,35 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             decoder_accuracy = np.exp(log_p_context_sample)
             print("Decoder Accuracy", decoder_accuracy)
 
-            if decoder_accuracy >= 0.86:
-                new_context_dim = min(int(1.5*con_dim + 1), max_context_dim)
+            '''
+            Create score (phi(i)) = -log_p_context_sample.mean() for each specific context 
+            Assign phis to each specific context
+            Get p(i) in the following manner: (phi(i) + epsilon)
+            Get Probabilities by doing p(i)/sum of all p(i)'s 
+            '''
+            logp_np = logp_dc.detach().numpy()
+            con_np = con.detach().numpy()
+            phi_dict = {i:0 for i in range(con_dim)}
+            count_dict = {i:0 for i in range(con_dim)}
+            for i in range(len(logp_np)):
+                current_con = con_np[i]
+                phi_dict[current_con] += logp_np[i]
+                count_dict[current_con] += 1
+            print(phi_dict)
+            phi_dict = {k: (-1) * v/count_dict[k] for (k,v) in phi_dict.items()}
+            sorted_dict = dict(sorted(phi_dict.items(), key=lambda item: item[1], reverse = True))
+            sorted_dict_keys = list(sorted_dict.keys())
+            rank_dict = {sorted_dict_keys[i]: 1/(i+1) for i in range(len(sorted_dict_keys))}
+            rank_dict_sum = sum(list(rank_dict.values()))
+            context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < con_dim else 0 for k in context_dim_prob_dict.keys()}
+            print(context_dim_prob_dict)
+
+            if decoder_accuracy >= 0.5:
+                new_context_dim = min(int(1.5*con_dim+1), max_con_dim)
                 print("new_context_dim: ", new_context_dim)
-                new_context_prob_arr = new_context_dim * [1/new_context_dim]
-                context_dist = Categorical(probs= new_context_prob_arr )
-                context_dim = new_context_dim
+                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_con_dim - new_context_dim)*[0]
+                context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
+                con_dim = new_context_dim
 
             buffer.clear_dc_buff()
 
@@ -269,11 +271,11 @@ if __name__ == '__main__':
     parser.add_argument('--con', type=int, default=4)
     args = parser.parse_args()
 
-    mpi_fork(args.cpu)
+    #mpi_fork(args.cpu)
 
     from utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    valor(lambda: gym.make(args.env), actor_critic=ActorCritic, ac_kwargs=dict(hidden_dims=[args.hid]*args.l),
+    valor(lambda: gym.make(args.env), actor_critic=ActorCritic, ac_kwargs=dict(hidden_dims=[args.hid]*args.l, lstmFlag = False),
         disc=Discriminator, dc_kwargs=dict(hidden_dims=args.hid),  gamma=args.gamma, seed=args.seed, episodes_per_epoch=args.episodes, epochs=args.epochs, logger_kwargs=logger_kwargs, con_dim=args.con)
 

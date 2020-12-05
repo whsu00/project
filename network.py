@@ -9,6 +9,9 @@ from gym.spaces import Box, Discrete
 import pdb
 
 #Creates MLP 
+'''
+TODO: Change shape for LSTM inputs
+'''
 class MLP(nn.Module):
     def __init__(self, layers, activation=torch.tanh, output_activation=None,
                  output_squeeze=False):
@@ -33,15 +36,16 @@ class MLP(nn.Module):
         return x.squeeze() if self.output_squeeze else x
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, input_dim, hidden_dims, activation, output_activation, action_dim):
+    def __init__(self, input_dim, hidden_dims, activation, output_activation, action_dim, output_squeeze = False, batch = False):
         super(GaussianPolicy, self).__init__()
-
-        self.mu = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation, output_activation=output_activation)
+        self.mu = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation, output_activation=output_activation, output_squeeze = output_squeeze)
         self.log_std = nn.Parameter(-0.5 * torch.ones(action_dim))
 
-    def forward(self, x, a=None):
-        policy = Normal(self.mu(x), self.log_std.exp())
+    def forward(self, x, a=None, batch = False):
         #pdb.set_trace()
+        policy = Normal(self.mu(x), self.log_std.exp())
+        if batch:
+            pdb.set_trace()
         pi = policy.sample()
         logp_pi = policy.log_prob(pi).sum(dim=1)
         if a is not None:
@@ -69,14 +73,18 @@ class CategoricalPolicy(nn.Module):
 
         return pi, logp, logp_pi
 
-class BLSTMEncoderPolicy(nn.Module):
-    def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim, bidirectional):
-        super(BLSTMPolicy, self).__init__()
+
+class LSTMEncoderPolicy(nn.Module):
+    def __init__(self, input_dim, hidden_dims, activation, output_activation, action_dim):
+        super(LSTMEncoderPolicy, self).__init__()
         self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims, batch_first=True, bidirectional=False)
         lstm_output_size = hidden_dims
-        self.logits = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation)
+        self.gaussian_p = GaussianPolicy(input_dim = lstm_output_size, hidden_dims = (32,32), activation = torch.tanh, output_activation = None, action_dim = action_dim, output_squeeze = True)
 
-
+    def forward(self, seq, gt = None, batch = False):
+        #pdb.set_trace()
+        inter_states, _ = self.lstm(seq.unsqueeze(0))
+        return self.gaussian_p(inter_states, gt, batch)
 
 
 class BLSTMPolicy(nn.Module):
@@ -84,6 +92,7 @@ class BLSTMPolicy(nn.Module):
         super(BLSTMPolicy, self).__init__()
         self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims//2, batch_first=True, bidirectional=True)
         self.linear = nn.Linear(hidden_dims, con_dim)
+        self.con_dim = con_dim
         nn.init.zeros_(self.linear.bias)
 
     def forward(self, seq, gt=None):
@@ -108,26 +117,25 @@ class TransformerPolicy(nn.module):
 '''
 
 class ActorCritic(nn.Module):
-    def __init__(self, input_dim, action_space, hidden_dims=(64, 64), activation=torch.tanh, output_activation=None, policy=None):
+    def __init__(self, input_dim, action_space, hidden_dims=(64, 64), activation=torch.tanh, output_activation=None, policy=None, lstmFlag = False):
         super(ActorCritic, self).__init__()
 
-        if policy is None:
+        #pdb.set_trace()
+        if lstmFlag:
+            self.policy = LSTMEncoderPolicy(input_dim, 64, activation, output_activation, action_space.shape[0])
+
+        elif policy is None:
             if isinstance(action_space, Box):
                 self.policy = GaussianPolicy(input_dim, hidden_dims, activation, output_activation, action_space.shape[0])
             elif isinstance(action_space, Discrete):
                 self.policy = CategoricalPolicy(input_dim, hidden_dims, activation, output_activation, action_space.n)
-        else: 
-            self.policy = policy(input_dim, hidden_dims, activation, output_activation, action_space)
 
         self.value_f = MLP(layers=[input_dim] + list(hidden_dims) + [1], activation=activation, output_squeeze=True)
 
-    def forward(self, x, a=None):
+    def forward(self, x, a = None, batch = False):
         #pdb.set_trace()
-        '''
-        pi is 
-        '''
-        pi, logp, logp_pi = self.policy(x, a)
-        v= self.value_f(x)
+        pi, logp, logp_pi = self.policy(x, a, batch)
+        v = self.value_f(x)
 
         return pi, logp, logp_pi, v
 
@@ -140,12 +148,17 @@ class ActorCritic(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, input_dim, context_dim, activation=torch.softmax, output_activation=torch.softmax, hidden_dims=64):
         super(Discriminator, self).__init__()
-
         self.policy = BLSTMPolicy(input_dim, hidden_dims, activation, output_activation, context_dim, bidirectional = True)
+        self.hidden_dims = hidden_dims
 
     def forward(self, seq, gt=None):
         pred, loggt, logp = self.policy(seq, gt)
         return pred, loggt, logp
+
+    def update_output_dim(self, new_dim):
+        self.policy.linear = nn.Linear(self.hidden_dims, new_dim)
+        nn.init.zeros_(self.policy.linear.bias)
+
 
 def count_vars(module):
     return sum(p.numel() for p in module.parameters() if p.requires_grad)
