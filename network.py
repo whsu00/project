@@ -1,4 +1,6 @@
 # Networks of value / policy / decoder
+import sys
+sys.path.insert(0, './utils/')
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,7 +8,7 @@ import torch.nn.functional as F
 from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 from gym.spaces import Box, Discrete
-import utils.pytorch_utils as ptu
+import pytorch_utils as ptu
 import pdb
 
 #Creates MLP 

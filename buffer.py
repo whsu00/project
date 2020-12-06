@@ -1,12 +1,14 @@
+import sys
+sys.path.insert(0, './utils')
 import numpy as np
 import torch
 import torch.nn.functional as F
 import gym
 import time
 import scipy.signal
-from utils.logx import EpochLogger
-from utils.mpi_torch import average_gradients, sync_all_params
-from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
+from logx import EpochLogger
+from mpi_torch import average_gradients, sync_all_params
+from mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
 import pdb
 
 class Buffer(object):

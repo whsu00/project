@@ -1,4 +1,6 @@
  # VALOR implementation 
+import sys
+sys.path.insert(0, './utils/')
 import numpy as np 
 import torch
 import torch.nn.functional as F 
@@ -10,8 +12,8 @@ from buffer import Buffer
 from torch.distributions.categorical import Categorical
 # from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
 # from utils.mpi_torch import average_gradients, sync_all_params
-from utils.logx import EpochLogger
-import utils.pytorch_utils as ptu
+from logx import EpochLogger
+import pytorch_utils as ptu
 from types import SimpleNamespace
 import pdb
 
@@ -294,7 +296,7 @@ if __name__ == '__main__':
 
     # mpi_fork(args.cpu)
 
-    from utils.run_utils import setup_logger_kwargs
+    from run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
 

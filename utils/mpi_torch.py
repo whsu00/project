@@ -1,6 +1,6 @@
 import torch
 import pytorch_utils as ptu
-from utils.mpi_tools import broadcast, mpi_avg
+from mpi_tools import broadcast, mpi_avg
 
 
 def sync_all_params(param, root=0):
