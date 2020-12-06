@@ -42,12 +42,12 @@ class GaussianPolicy(nn.Module):
         self.mu = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation, output_activation=output_activation)
         self.log_std = nn.Parameter(-0.5 * torch.ones(action_dim))
 
-        self.mu.to(ptu.device)
-        self.log_std.to(ptu.device)
+        self.mu = self.mu.to(ptu.device)
+        self.log_std = self.log_std.to(ptu.device)
 
     def forward(self, x, a=None):
+        pdb.set_trace()
         policy = Normal(self.mu(x), self.log_std.exp())
-        #pdb.set_trace()
         pi = policy.sample()
         logp_pi = policy.log_prob(pi).sum(dim=1)
         if a is not None:
@@ -61,8 +61,7 @@ class CategoricalPolicy(nn.Module):
     def __init__(self, input_dim, hidden_dims, activation, output_activation, action_dim):
         super(CategoricalPolicy, self).__init__()
 
-        self.logits = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation)
-        self.logits.to(ptu.device)
+        self.logits = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation).to(ptu.device)
 
     def forward(self, x, a=None):
         logits = self.logits(x)
@@ -79,12 +78,9 @@ class CategoricalPolicy(nn.Module):
 class BLSTMPolicy(nn.Module):
     def __init__(self, input_dim, hidden_dims, activation, output_activation, con_dim):
         super(BLSTMPolicy, self).__init__()
-        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims//2, batch_first=True, bidirectional=True)
-        self.linear = nn.Linear(hidden_dims, con_dim)
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=hidden_dims//2, batch_first=True, bidirectional=True).to(ptu.device)
+        self.linear = nn.Linear(hidden_dims, con_dim).to(ptu.device)
         nn.init.zeros_(self.linear.bias)
-
-        self.lstm.to(ptu.device)
-        self.linear.to(ptu.device)
 
     def forward(self, seq, gt=None):
         inter_states, _ = self.lstm(seq)
@@ -119,9 +115,7 @@ class ActorCritic(nn.Module):
         else: 
             self.policy = policy(input_dim, hidden_dims, activation, output_activation, action_space)
 
-        self.value_f = MLP(layers=[input_dim] + list(hidden_dims) + [1], activation=activation, output_squeeze=True)
-
-        self.value_f.to(ptu.device)
+        self.value_f = MLP(layers=[input_dim] + list(hidden_dims) + [1], activation=activation, output_squeeze=True).to(ptu.device)
 
     def forward(self, x, a=None):
         #pdb.set_trace()
