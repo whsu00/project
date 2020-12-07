@@ -39,14 +39,10 @@ class GaussianPolicy(nn.Module):
     def __init__(self, input_dim, hidden_dims, activation, output_activation, action_dim):
         super(GaussianPolicy, self).__init__()
 
-        self.mu = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation, output_activation=output_activation)
-        self.log_std = nn.Parameter(-0.5 * torch.ones(action_dim))
-
-        self.mu = self.mu.to(ptu.device)
-        self.log_std = self.log_std.to(ptu.device)
+        self.mu = MLP(layers=[input_dim] + list(hidden_dims) + [action_dim], activation=activation, output_activation=output_activation).to(ptu.device)
+        self.log_std = nn.Parameter(-0.5 * torch.ones(action_dim)).to(ptu.device)
 
     def forward(self, x, a=None):
-        pdb.set_trace()
         policy = Normal(self.mu(x), self.log_std.exp())
         pi = policy.sample()
         logp_pi = policy.log_prob(pi).sum(dim=1)
@@ -118,7 +114,6 @@ class ActorCritic(nn.Module):
         self.value_f = MLP(layers=[input_dim] + list(hidden_dims) + [1], activation=activation, output_squeeze=True).to(ptu.device)
 
     def forward(self, x, a=None):
-        #pdb.set_trace()
         pi, logp, logp_pi = self.policy(x, a)
         v = self.value_f(x)
 

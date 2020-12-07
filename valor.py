@@ -79,7 +79,7 @@ def valor(args):
 
     # Buffer
     local_episodes_per_epoch = episodes_per_epoch # int(episodes_per_epoch / num_procs())
-    buffer = Buffer(max_context_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
+    buffer = Buffer(max_context_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv, gamma=gamma, lam=lam)
 
     # Count variables
     var_counts = tuple(count_vars(module) for module in
