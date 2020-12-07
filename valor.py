@@ -13,9 +13,30 @@ from torch.distributions.categorical import Categorical
 from utils.logx import EpochLogger
 import pdb
 
-def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator, dc_kwargs=dict(), seed=0, episodes_per_epoch=40,
-        epochs=50, gamma=0.99, pi_lr=3e-4, vf_lr=1e-3, dc_lr=2e-3, train_v_iters=80, train_dc_iters=50, train_dc_interv=2, 
-        lam=0.97, max_ep_len=40, logger_kwargs=dict(), con_dim=4, max_con_dim = 64, save_freq=10, k=1):
+def valor():
+
+    env_fn = args.get('env_fn', lambda: gym.make('HalfCheetah-v2'))
+    actor_critic = args.get('actor_critic', ActorCritic)
+    ac_kwargs = args.get('ac_kwargs', {})
+    disc = args.get('disc', Discriminator)
+    dc_kwargs = args.get('dc_kwargs', {})
+    seed = args.get('seed', 0)
+    episodes_per_epoch = args.get('episodes_per_epoch', 40)
+    epochs = args.get('epochs', 50)
+    gamma = args.get('gamma', 0.99)
+    pi_lr = args.get('pi_lr', 3e-4)
+    vf_lr = args.get('vf_lr', 1e-3)
+    dc_lr = args.get('dc_lr', 2e-3)
+    train_v_iters = args.get('train_v_iters', 80)
+    train_dc_iters = args.get('train_dc_iters', 50)
+    train_dc_interv = args.get('train_dc_interv', 2)
+    lam = args.get('lam', 0.97)
+    max_ep_len = args.get('max_ep_len', 1000)
+    logger_kwargs = args.get('logger_kwargs', {})
+    context_dim = args.get('context_dim', 4)
+    max_context_dim = args.get('max_context_dim', 64)
+    save_freq = args.get('save_freq', 10)
+    k = args.get('k', 1)
 
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
@@ -31,12 +52,12 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     ac_kwargs['action_space'] = env.action_space
 
     # Model
-    actor_critic = actor_critic(input_dim=obs_dim[0]+max_con_dim, **ac_kwargs)
-    disc = disc(input_dim=obs_dim[0], context_dim=max_con_dim, **dc_kwargs)
+    actor_critic = actor_critic(input_dim=obs_dim[0]+max_context_dim, **ac_kwargs)
+    disc = disc(input_dim=obs_dim[0], context_dim=max_context_dim, **dc_kwargs)
 
     # Buffer
     local_episodes_per_epoch = int(episodes_per_epoch / num_procs())
-    buffer = Buffer(max_con_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
+    buffer = Buffer(max_context_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
 
     # Count variables
     var_counts = tuple(count_vars(module) for module in
@@ -129,8 +150,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
     #Creates context distribution where each logit is equal to one (This is first place to make change)
-    context_dim_prob_dict = {i: 1/con_dim if i < con_dim else 0 for i in range(max_con_dim)} 
-    last_phi_dict = {i:0 for i in range(con_dim)}
+    context_dim_prob_dict = {i: 1/context_dim if i < context_dim else 0 for i in range(max_context_dim)} 
+    last_phi_dict = {i:0 for i in range(context_dim)}
     context_dist = Categorical(probs=torch.Tensor(list(context_dim_prob_dict.values())))
     total_t = 0
 
@@ -145,7 +166,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             # Every time we run the policy we sample a new context
     
             c = context_dist.sample()
-            c_onehot = F.one_hot(c, max_con_dim).squeeze().float()
+            c_onehot = F.one_hot(c, max_context_dim).squeeze().float()
             for _ in range(max_ep_len):
                 concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
                 '''
@@ -218,8 +239,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             '''
             logp_np = logp_dc.detach().numpy()
             con_np = con.detach().numpy()
-            phi_dict = {i:0 for i in range(con_dim)}
-            count_dict = {i:0 for i in range(con_dim)}
+            phi_dict = {i:0 for i in range(context_dim)}
+            count_dict = {i:0 for i in range(context_dim)}
             for i in range(len(logp_np)):
                 current_con = con_np[i]
                 phi_dict[current_con] += logp_np[i]
@@ -231,17 +252,17 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             sorted_dict_keys = list(sorted_dict.keys())
             rank_dict = {sorted_dict_keys[i]: 1/(i+1) for i in range(len(sorted_dict_keys))}
             rank_dict_sum = sum(list(rank_dict.values()))
-            context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < con_dim else 0 for k in context_dim_prob_dict.keys()}
+            context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
             if decoder_accuracy >= 0.85:
-                new_context_dim = min(int(1.5*con_dim+1), max_con_dim)
+                new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
                 # print("new_context_dim: ", new_context_dim)
-                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_con_dim - new_context_dim)*[0]
+                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
                 context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
-                con_dim = new_context_dim
+                context_dim = new_context_dim
 
-            for i in range(con_dim):
+            for i in range(context_dim):
               if i in phi_dict:
                 last_phi_dict[i] = phi_dict[i]
               elif i not in last_phi_dict:
@@ -252,7 +273,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
           logger.store(LogProbabilityContext = 0, DecoderAccuracy = 0)
 
         # Log
-        logger.store(ContextDim = con_dim)
+        logger.store(ContextDim = context_dim)
         logger.log_tabular('Epoch', epoch)
         logger.log_tabular('EpRet', with_min_and_max=True)
         logger.log_tabular('EpLen', average_only=True)
@@ -292,6 +313,4 @@ if __name__ == '__main__':
     from utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    valor(lambda: gym.make(args.env), actor_critic=ActorCritic, ac_kwargs=dict(hidden_dims=[args.hid]*args.l, lstmFlag = False),
-        disc=Discriminator, dc_kwargs=dict(hidden_dims=args.hid),  gamma=args.gamma, seed=args.seed, episodes_per_epoch=args.episodes, epochs=args.epochs, logger_kwargs=logger_kwargs, con_dim=args.con)
-
+    valor(args)
