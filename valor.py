@@ -236,7 +236,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
 
             if decoder_accuracy >= 0.85:
                 new_context_dim = min(int(1.5*con_dim+1), max_con_dim)
-                print("new_context_dim: ", new_context_dim)
+                # print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_con_dim - new_context_dim)*[0]
                 context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
                 con_dim = new_context_dim
@@ -266,6 +266,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         logger.log_tabular('DeltaLossDC', average_only=True)
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
+        logger.log_tabular('ConDim', con_dim)
         logger.log_tabular('Time', time.time()-start_time)
         logger.log_tabular('LogProbabilityContext', average_only=True)
         logger.log_tabular('DecoderAccuracy', average_only = True)
