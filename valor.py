@@ -266,7 +266,6 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         logger.log_tabular('DeltaLossDC', average_only=True)
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
-        logger.log_tabular('ConDim', con_dim)
         logger.log_tabular('Time', time.time()-start_time)
         logger.log_tabular('LogProbabilityContext', average_only=True)
         logger.log_tabular('DecoderAccuracy', average_only = True)
