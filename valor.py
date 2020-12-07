@@ -8,8 +8,8 @@ import scipy.signal
 from network import Discriminator, ActorCritic, count_vars
 from buffer import Buffer
 from torch.distributions.categorical import Categorical
-from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
-from utils.mpi_torch import average_gradients, sync_all_params
+#from utils.mpi_tools import mpi_fork, proc_id, mpi_statistics_scalar, num_procs
+#from utils.mpi_torch import average_gradients, sync_all_params
 from utils.logx import EpochLogger
 import pdb
 
@@ -130,6 +130,7 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
 
     #Creates context distribution where each logit is equal to one (This is first place to make change)
     context_dim_prob_dict = {i: 1/con_dim if i < con_dim else 0 for i in range(max_con_dim)} 
+    last_phi_dict = {i:0 for i in range(con_dim)}
     context_dist = Categorical(probs=torch.Tensor(list(context_dim_prob_dict.values())))
     total_t = 0
 
@@ -207,6 +208,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             decoder_accuracy = np.exp(log_p_context_sample)
             print("Decoder Accuracy", decoder_accuracy)
 
+            logger.store(LogProbabilityContext = log_p_context_sample, DecoderAccuracy = decoder_accuracy)
+
             '''
             Create score (phi(i)) = -log_p_context_sample.mean() for each specific context 
             Assign phis to each specific context
@@ -222,7 +225,8 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
                 phi_dict[current_con] += logp_np[i]
                 count_dict[current_con] += 1
             print(phi_dict)
-            phi_dict = {k: (-1) * v/count_dict[k] for (k,v) in phi_dict.items()}
+            
+            phi_dict = {k: last_phi_dict[k] if count_dict[k] == 0 else (-1) * v/count_dict[k] for (k,v) in phi_dict.items()}
             sorted_dict = dict(sorted(phi_dict.items(), key=lambda item: item[1], reverse = True))
             sorted_dict_keys = list(sorted_dict.keys())
             rank_dict = {sorted_dict_keys[i]: 1/(i+1) for i in range(len(sorted_dict_keys))}
@@ -230,16 +234,25 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < con_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
-            if decoder_accuracy >= 0.5:
+            if decoder_accuracy >= 0.85:
                 new_context_dim = min(int(1.5*con_dim+1), max_con_dim)
                 print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_con_dim - new_context_dim)*[0]
                 context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
                 con_dim = new_context_dim
 
+            for i in range(con_dim):
+              if i in phi_dict:
+                last_phi_dict[i] = phi_dict[i]
+              elif i not in last_phi_dict:
+                last_phi_dict[i] = max(phi_dict.values())
+            
             buffer.clear_dc_buff()
+        else:
+          logger.store(LogProbabilityContext = 0, DecoderAccuracy = 0)
 
         # Log
+        logger.store(ContextDim = con_dim)
         logger.log_tabular('Epoch', epoch)
         logger.log_tabular('EpRet', with_min_and_max=True)
         logger.log_tabular('EpLen', average_only=True)
@@ -254,6 +267,9 @@ def valor(env_fn, actor_critic=ActorCritic, ac_kwargs=dict(), disc=Discriminator
         logger.log_tabular('Entropy', average_only=True)
         logger.log_tabular('KL', average_only=True)
         logger.log_tabular('Time', time.time()-start_time)
+        logger.log_tabular('LogProbabilityContext', average_only=True)
+        logger.log_tabular('DecoderAccuracy', average_only = True)
+        logger.log_tabular('ContextDim', average_only = True)
         logger.dump_tabular()
 
 if __name__ == '__main__':
