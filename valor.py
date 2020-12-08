@@ -13,7 +13,7 @@ from torch.distributions.categorical import Categorical
 from utils.logx import EpochLogger
 import pdb
 
-def valor():
+def valor(args):
 
     env_fn = args.get('env_fn', lambda: gym.make('HalfCheetah-v2'))
     actor_critic = args.get('actor_critic', ActorCritic)
