@@ -14,7 +14,8 @@ from utils.logx import EpochLogger
 import pdb
 
 def valor(args):
-
+    if not hasattr(args, "get"):
+        args.get = args.__dict__.get
     env_fn = args.get('env_fn', lambda: gym.make('HalfCheetah-v2'))
     actor_critic = args.get('actor_critic', ActorCritic)
     ac_kwargs = args.get('ac_kwargs', {})
@@ -56,7 +57,7 @@ def valor(args):
     disc = disc(input_dim=obs_dim[0], context_dim=max_context_dim, **dc_kwargs)
 
     # Buffer
-    local_episodes_per_epoch = int(episodes_per_epoch / num_procs())
+    local_episodes_per_epoch = episodes_per_epoch # int(episodes_per_epoch / num_procs())
     buffer = Buffer(max_context_dim, obs_dim[0], act_dim[0], local_episodes_per_epoch, max_ep_len, train_dc_interv)
 
     # Count variables
