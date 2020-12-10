@@ -39,6 +39,8 @@ def valor(args):
     save_freq = args.get('save_freq', 10)
     k = args.get('k', 1)
 
+    from utils.run_utils import setup_logger_kwargs
+    logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
     logger = EpochLogger(**logger_kwargs)
     logger.save_config(locals())
 
@@ -256,12 +258,12 @@ def valor(args):
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
-            # if decoder_accuracy >= 0.85:
-            #     new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
-            #     # print("new_context_dim: ", new_context_dim)
-            #     new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
-            #     context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
-            #     context_dim = new_context_dim
+            if decoder_accuracy >= 0.5:
+                new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
+                # print("new_context_dim: ", new_context_dim)
+                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
+                context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
+                context_dim = new_context_dim
 
             for i in range(context_dim):
               if i in phi_dict:
@@ -334,8 +336,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #mpi_fork(args.cpu)
-
-    from utils.run_utils import setup_logger_kwargs
-    logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
     valor(args)
