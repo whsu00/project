@@ -34,8 +34,8 @@ def valor(args):
     lam = args.get('lam', 0.97)
     max_ep_len = args.get('max_ep_len', 1000)
     logger_kwargs = args.get('logger_kwargs', {})
-    context_dim = args.get('context_dim', 4)
-    max_context_dim = args.get('max_context_dim', 64)
+    context_dim = args.get('con', 4)
+    max_context_dim = args.get('max', 64)
     save_freq = args.get('save_freq', 10)
     k = args.get('k', 1)
 
@@ -256,12 +256,12 @@ def valor(args):
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
-            if decoder_accuracy >= 0.85:
-                new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
-                # print("new_context_dim: ", new_context_dim)
-                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
-                context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
-                context_dim = new_context_dim
+            # if decoder_accuracy >= 0.85:
+            #     new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
+            #     # print("new_context_dim: ", new_context_dim)
+            #     new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
+            #     context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
+            #     context_dim = new_context_dim
 
             for i in range(context_dim):
               if i in phi_dict:
@@ -330,6 +330,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--exp_name', type=str, default='valor')
     parser.add_argument('--con', type=int, default=4)
+    parser.add_argument('--max', type=int, default=64)
     args = parser.parse_args()
 
     #mpi_fork(args.cpu)

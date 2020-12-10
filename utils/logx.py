@@ -56,7 +56,7 @@ class Logger:
         Args:
             output_dir (string): A directory for saving results to. If
                 ``None``, defaults to a temp directory of the form
-                ``/tmp/experiments/somerandomnumber``.
+                ``/tmp/experiments/expname_somerandomnumber``.
 
             output_fname (string): Name for the tab-separated-value file
                 containing metrics logged throughout a training run.
@@ -69,7 +69,7 @@ class Logger:
                 should give them all the same ``exp_name``.)
         """
         if proc_id()==0:
-            self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
+            self.output_dir = output_dir or "/tmp/experiments/%s_%i"%(exp_name,int(time.time()))
             if osp.exists(self.output_dir):
                 print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
             else:
