@@ -132,6 +132,13 @@ class Logger:
             with open(osp.join(self.output_dir, "config.json"), 'w') as out:
                 out.write(output)
 
+    def save_context_values(self, values):
+        output = json.dumps(values, separators=(',',':\t'), indent=4, sort_keys=True)
+        print(colorize('Saving context values:', color='cyan', bold=True))
+        print(output)
+        with open(osp.join(self.output_dir, "context_values.json"), 'w') as out:
+            out.write(output)
+
     def save_state(self, state_dict, models, itr=None):
         """
         Saves the state of an experiment.
