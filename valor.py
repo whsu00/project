@@ -36,6 +36,7 @@ def valor(args):
     logger_kwargs = args.get('logger_kwargs', {})
     context_dim = args.get('con', 4)
     max_context_dim = args.get('max', 64)
+    threshold = args.get('threshold', 0.5)
     save_freq = args.get('save_freq', 10)
     k = args.get('k', 1)
 
@@ -258,7 +259,7 @@ def valor(args):
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
-            if decoder_accuracy >= 0.5:
+            if decoder_accuracy >= threshold:
                 new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
                 # print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
@@ -333,6 +334,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name', type=str, default='valor')
     parser.add_argument('--con', type=int, default=4)
     parser.add_argument('--max', type=int, default=64)
+    parser.add_argument('--threshold', type=float, default=0.5)
     args = parser.parse_args()
 
     #mpi_fork(args.cpu)
