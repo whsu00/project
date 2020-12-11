@@ -22,7 +22,7 @@ def valor(args):
     disc = args.get('disc', Discriminator)
     dc_kwargs = args.get('dc_kwargs', {})
     seed = args.get('seed', 0)
-    episodes_per_epoch = args.get('episodes_per_epoch', 40)
+    episodes_per_epoch = args.get('episodes', 40)
     epochs = args.get('epochs', 50)
     gamma = args.get('gamma', 0.99)
     pi_lr = args.get('pi_lr', 3e-4)
@@ -302,7 +302,7 @@ def valor(args):
         for _ in range(max_ep_len):
             concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
             a, _, logp_t, v_t = actor_critic(concat_obs)
-            buffer.store(c, concat_obs.squeeze().detach().numpy(), a.detach().numpy(), r, v_t.item(), logp_t.detach().numpy())
+            # buffer.store(c, concat_obs.squeeze().detach().numpy(), a.detach().numpy(), r, v_t.item(), logp_t.detach().numpy())
             # logger.store(VVals=v_t)
             o, r, d, _ = env.step(a.detach().numpy()[0])
             ep_ret += r
@@ -313,7 +313,7 @@ def valor(args):
                 dc_diff = torch.Tensor(buffer.calc_diff()).unsqueeze(0)
                 con = torch.Tensor([float(c)]).unsqueeze(0)
                 _, _, log_p = disc(dc_diff, con)
-                buffer.end_episode(log_p.detach().numpy())
+                # buffer.end_episode(log_p.detach().numpy())
                 # logger.store(EpRet=ep_ret, EpLen=ep_len)
                 context_values.append(env.sim.data.qpos[0])
                 o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
@@ -328,7 +328,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=8)
-    parser.add_argument('--episodes', type=int, default=1000)
+    parser.add_argument('--episodes', type=int, default=40)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--exp_name', type=str, default='valor')
     parser.add_argument('--con', type=int, default=4)
