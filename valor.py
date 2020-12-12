@@ -297,27 +297,28 @@ def valor(args):
         logger.log_tabular('ContextDim', average_only = True)
         logger.dump_tabular()
 
-    context_values = []
+    context_values = {c:[] for c in range(context_dim)}
     for c in range(context_dim):
         c_onehot = F.one_hot(torch.tensor(c), max_context_dim).squeeze().float()
-        for _ in range(max_ep_len):
-            concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
-            a, _, logp_t, v_t = actor_critic(concat_obs)
-            # buffer.store(c, concat_obs.squeeze().detach().numpy(), a.detach().numpy(), r, v_t.item(), logp_t.detach().numpy())
-            # logger.store(VVals=v_t)
-            o, r, d, _ = env.step(a.detach().numpy()[0])
-            ep_ret += r
-            ep_len += 1
-            total_t += 1
-            terminal = d or (ep_len == max_ep_len)
-            if terminal:
-                dc_diff = torch.Tensor(buffer.calc_diff()).unsqueeze(0)
-                con = torch.Tensor([float(c)]).unsqueeze(0)
-                _, _, log_p = disc(dc_diff, con)
-                # buffer.end_episode(log_p.detach().numpy())
-                # logger.store(EpRet=ep_ret, EpLen=ep_len)
-                context_values.append(env.sim.data.qpos[0])
-                o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
+        for _ in range(5):
+            for _ in range(max_ep_len):
+                concat_obs = torch.cat([torch.Tensor(o.reshape(1, -1)), c_onehot.reshape(1, -1)], 1)
+                a, _, logp_t, v_t = actor_critic(concat_obs)
+                # buffer.store(c, concat_obs.squeeze().detach().numpy(), a.detach().numpy(), r, v_t.item(), logp_t.detach().numpy())
+                # logger.store(VVals=v_t)
+                o, r, d, _ = env.step(a.detach().numpy()[0])
+                ep_ret += r
+                ep_len += 1
+                total_t += 1
+                terminal = d or (ep_len == max_ep_len)
+                if terminal:
+                    dc_diff = torch.Tensor(buffer.calc_diff()).unsqueeze(0)
+                    con = torch.Tensor([float(c)]).unsqueeze(0)
+                    _, _, log_p = disc(dc_diff, con)
+                    # buffer.end_episode(log_p.detach().numpy())
+                    # logger.store(EpRet=ep_ret, EpLen=ep_len)
+                    context_values[c].append(env.sim.data.qpos[0])
+                    o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
     logger.save_context_values(context_values)
 
 if __name__ == '__main__':
