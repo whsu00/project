@@ -13,6 +13,23 @@ from torch.distributions.categorical import Categorical
 from utils.logx import EpochLogger
 import pdb
 
+class Convergence:
+    values = []
+    threshold = 0.25
+    count = 0
+    def add(self, x):
+        self.values.append(x)
+        self.count += 1
+    def converged(self):
+        retval = np.std(self.values[-self.count:]) < self.threshold
+        self.count = 0
+        return retval
+    def debug(self):
+        print("CNV DEBUG", len(self.values), self.count)
+        print(np.std(self.values[-self.count:]))
+        return self.values[-self.count:]
+cnv = Convergence()
+
 def valor(args):
     if not hasattr(args, "get"):
         args.get = args.__dict__.get
@@ -22,7 +39,7 @@ def valor(args):
     disc = args.get('disc', Discriminator)
     dc_kwargs = args.get('dc_kwargs', {})
     seed = args.get('seed', 0)
-    episodes_per_epoch = args.get('episodes', 40)
+    episodes_per_epoch = args.get('episodes_per_epoch', 40)
     epochs = args.get('epochs', 50)
     gamma = args.get('gamma', 0.99)
     pi_lr = args.get('pi_lr', 3e-4)
@@ -34,11 +51,12 @@ def valor(args):
     lam = args.get('lam', 0.97)
     max_ep_len = args.get('max_ep_len', 1000)
     logger_kwargs = args.get('logger_kwargs', {})
-    context_dim = args.get('con', 4)
-    max_context_dim = args.get('max', 64)
+    context_dim = args.get('context_dim', 4)
+    max_context_dim = args.get('max_context_dim', 64)
     threshold = args.get('threshold', 0.5)
     save_freq = args.get('save_freq', 10)
     k = args.get('k', 1)
+    use_convergence = args.get('use_convergence', False)
 
     from utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
@@ -202,6 +220,7 @@ def valor(args):
                     #Here, this is just the log probability of the label it thinks it is
                     _, _, log_p = disc(dc_diff, con)
                     buffer.end_episode(log_p.detach().numpy())
+                    cnv.add(ep_ret)
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
                     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
@@ -223,15 +242,15 @@ def valor(args):
         if (epoch + 1 )% train_dc_interv == 0 and epoch > 0:
             #pdb.set_trace()
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
-            print("Context: ",  con)
-            print("num_contexts", len(con))
+            # print("Context: ",  con)
+            # print("num_contexts", len(con))
             _, logp_dc, _ = disc(s_diff, con)
             log_p_context_sample = logp_dc.mean().detach().numpy()
 
-            print("Log Probability context sample", log_p_context_sample)
+            # print("Log Probability context sample", log_p_context_sample)
 
             decoder_accuracy = np.exp(log_p_context_sample)
-            print("Decoder Accuracy", decoder_accuracy)
+            # print("Decoder Accuracy", decoder_accuracy)
 
             logger.store(LogProbabilityContext = log_p_context_sample, DecoderAccuracy = decoder_accuracy)
 
@@ -249,7 +268,7 @@ def valor(args):
                 current_con = con_np[i]
                 phi_dict[current_con] += logp_np[i]
                 count_dict[current_con] += 1
-            print(phi_dict)
+            # print(phi_dict)
             
             phi_dict = {k: last_phi_dict[k] if count_dict[k] == 0 else (-1) * v/count_dict[k] for (k,v) in phi_dict.items()}
             sorted_dict = dict(sorted(phi_dict.items(), key=lambda item: item[1], reverse = True))
@@ -257,9 +276,11 @@ def valor(args):
             rank_dict = {sorted_dict_keys[i]: 1/(i+1) for i in range(len(sorted_dict_keys))}
             rank_dict_sum = sum(list(rank_dict.values()))
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
-            print(context_dim_prob_dict)
+            # print(context_dim_prob_dict)
 
-            if decoder_accuracy >= threshold:
+            # if decoder_accuracy >= threshold:
+            # print(cnv.debug())
+            if (use_convergence and cnv.converged()) or (not use_convergence and decoder_accuracy >= threshold):
                 new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
                 # print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
@@ -330,12 +351,13 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=1)
     parser.add_argument('--cpu', type=int, default=8)
-    parser.add_argument('--episodes', type=int, default=40)
+    parser.add_argument('--episodes_per_epoch', type=int, default=40)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--exp_name', type=str, default='valor')
-    parser.add_argument('--con', type=int, default=4)
-    parser.add_argument('--max', type=int, default=64)
+    parser.add_argument('--context_dim', type=int, default=4)
+    parser.add_argument('--max_context_dim', type=int, default=64)
     parser.add_argument('--threshold', type=float, default=0.5)
+    parser.add_argument('--use_convergence', type=bool, default=False)
     args = parser.parse_args()
 
     #mpi_fork(args.cpu)
