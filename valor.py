@@ -217,6 +217,11 @@ def valor(args):
             If >= 0.86, increase k in the following manner: k = min(int(1.5*k + 1), Kmax)
             Kmax = 64
         ''' 
+
+        decoder_accs = []
+        stag_num = 10
+        stag_pct = 0.05
+
         if (epoch + 1 )% train_dc_interv == 0 and epoch > 0:
             #pdb.set_trace()
             con, s_diff = [torch.Tensor(x) for x in buffer.retrieve_dc_buff()]
@@ -256,11 +261,16 @@ def valor(args):
             context_dim_prob_dict = {k:rank_dict[k]/rank_dict_sum if k < context_dim else 0 for k in context_dim_prob_dict.keys()}
             print(context_dim_prob_dict)
 
-            if decoder_accuracy >= 0.85:
+            decoder_accs.append(decoder_accuracy)
+            stagnated = (len(decoder_accs) > stag_num and (decoder_accs[-stag_num-1] - decoder_accuracy) / stag_num < stag_pct)
+            if stagnated:
+                new_context_dim = max(int(0.75*context_dim), 5)
+            elif decoder_accuracy >= 0.86:
                 new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
-                # print("new_context_dim: ", new_context_dim)
-                new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
-                context_dist = Categorical(probs=torch.Tensor(new_context_prob_arr))
+            if stagnated or decoder_accuracy >= 0.86:
+                print("new_context_dim: ", new_context_dim)
+                new_context_prob_arr = np.array(new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0])
+                context_dist = Categorical(probs=ptu.from_numpy(new_context_prob_arr))
                 context_dim = new_context_dim
 
             for i in range(context_dim):
