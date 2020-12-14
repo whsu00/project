@@ -14,20 +14,17 @@ from utils.logx import EpochLogger
 import pdb
 
 class Convergence:
-    values = []
-    threshold = 0.25
-    count = 0
+    def __init__(self):
+        self.values = []
     def add(self, x):
         self.values.append(x)
-        self.count += 1
     def converged(self):
-        retval = np.std(self.values[-self.count:]) < self.threshold
-        self.count = 0
-        return retval
+        stddev = np.std(self.values)
+        m = np.mean(self.values)
+        self.values = []
+        return stddev/abs(m)
     def debug(self):
-        print("CNV DEBUG", len(self.values), self.count)
-        print(np.std(self.values[-self.count:]))
-        return self.values[-self.count:]
+        return self.values
 cnv = Convergence()
 
 def valor(args):
@@ -53,10 +50,10 @@ def valor(args):
     logger_kwargs = args.get('logger_kwargs', {})
     context_dim = args.get('context_dim', 4)
     max_context_dim = args.get('max_context_dim', 64)
-    threshold = args.get('threshold', 0.5)
+    curriculum_threshold = args.get('curriculum_threshold', 0)
+    convergence_threshold = args.get('convergence_threshold', 0)
     save_freq = args.get('save_freq', 10)
     k = args.get('k', 1)
-    use_convergence = args.get('use_convergence', False)
 
     from utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
@@ -220,7 +217,7 @@ def valor(args):
                     #Here, this is just the log probability of the label it thinks it is
                     _, _, log_p = disc(dc_diff, con)
                     buffer.end_episode(log_p.detach().numpy())
-                    cnv.add(ep_ret)
+                    cnv.add(log_p.detach().numpy())
                     logger.store(EpRet=ep_ret, EpLen=ep_len)
                     o, r, d, ep_ret, ep_len = env.reset(), 0, False, 0, 0
 
@@ -279,8 +276,7 @@ def valor(args):
             # print(context_dim_prob_dict)
 
             # if decoder_accuracy >= threshold:
-            # print(cnv.debug())
-            if (use_convergence and cnv.converged()) or (not use_convergence and decoder_accuracy >= threshold):
+            if (curriculum_threshold and decoder_accuracy >= curriculum_threshold) or (convergence_threshold and cnv.converged() < convergence_threshold):
                 new_context_dim = min(int(1.5*context_dim+1), max_context_dim)
                 # print("new_context_dim: ", new_context_dim)
                 new_context_prob_arr = new_context_dim * [1/new_context_dim] + (max_context_dim - new_context_dim)*[0]
@@ -350,14 +346,14 @@ if __name__ == '__main__':
     parser.add_argument('--l', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--seed', '-s', type=int, default=1)
-    parser.add_argument('--cpu', type=int, default=8)
+    parser.add_argument('--max_ep_len', type=int, default=50)
     parser.add_argument('--episodes_per_epoch', type=int, default=40)
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--exp_name', type=str, default='valor')
     parser.add_argument('--context_dim', type=int, default=4)
     parser.add_argument('--max_context_dim', type=int, default=64)
-    parser.add_argument('--threshold', type=float, default=0.5)
-    parser.add_argument('--use_convergence', type=bool, default=False)
+    parser.add_argument('--curriculum_threshold', type=float, default=0)
+    parser.add_argument('--convergence_threshold', type=float, default=0)
     args = parser.parse_args()
 
     #mpi_fork(args.cpu)
